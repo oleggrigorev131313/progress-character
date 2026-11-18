@@ -52,10 +52,12 @@ function phraseFrom(original, folded, work) {
 function nicePhrase(input, { stripZa = false } = {}) {
   let text = String(input ?? "").replace(/[«»"“”.,;:!?()[\]]+/g, " ");
   text = text.replace(/\s+/g, " ").trim();
+  text = text.replace(/^(?:и|а)\s+/iu, "");
   if (stripZa) text = text.replace(/^за\s+/iu, "");
+  text = text.replace(/\s+(?:для|за|на|в|с|от|по|и|а|к|о|об)$/iu, "");
   if (!text) return "";
   const alone = text.toLowerCase();
-  if (["у", "от", "за", "на", "по", "в", "и", "а", "с", "к", "о"].includes(alone)) return "";
+  if (["у", "от", "за", "на", "по", "в", "и", "а", "с", "к", "о", "для"].includes(alone)) return "";
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
@@ -71,8 +73,8 @@ function fail(message, hint) {
 
 function detectEntity(folded) {
   const rules = [
-    { entity: "income", type: "passive", re: /пассивн[а-я]*\s+доход/ },
-    { entity: "income", type: "passive", re: wordRe("дивиденд[а-я]*|роялти") },
+    { entity: "income", type: "passive", re: /пассивн/ },
+    { entity: "income", type: "passive", re: wordRe("дивиденд[а-я]*|роялти|аренд[а-я]*") },
     { entity: "budget", re: wordRe("бюджет[а-я]*") },
     { entity: "debt", re: wordRe("долг[а-я]*|должен|должна|занял|заняла|одолжил|одолжила|кредит") },
     { entity: "book", re: wordRe("книг[а-я]*|читаю|дочитал[а-я]*|прочитал[а-я]*|прочел|прочла") },
@@ -84,7 +86,7 @@ function detectEntity(folded) {
     {
       entity: "income",
       type: "active",
-      re: wordRe("доход[а-я]*|зарплат[а-я]*|получил|получила|заработал|заработала|пришло|пришли|пришла|премия|премию|аванс|подработк[а-я]*|фриланс[а-я]*|кешбек|кэшбек"),
+      re: wordRe("доход[а-я]*|зарплат[а-я]*|получил|получила|заработал|заработала|добавил|добавила|пришло|пришли|пришла|премия|премию|аванс|подработк[а-я]*|фриланс[а-я]*|кешбек|кэшбек"),
     },
   ];
   for (const rule of rules) {
@@ -139,6 +141,22 @@ function extractDate(work, now) {
   for (const match of work.matchAll(new RegExp(`(?<![a-zа-я0-9])(\\d{1,2})\\s+(${monthBody})(?:\\s+(\\d{4}))?(?![a-zа-я0-9])`, "g"))) {
     const year = match[3] ? Number(match[3]) : Number(samaraToday(now).slice(0, 4));
     push(match.index, match.index + match[0].length, calendarDate(year, months[match[2]], Number(match[1])));
+  }
+
+  for (const match of work.matchAll(/(?<!\d)(\d{1,2})\s+числа(?![a-zа-я0-9])/g)) {
+    const day = Number(match[1]);
+    const today = samaraToday(now);
+    let year = Number(today.slice(0, 4));
+    let month = Number(today.slice(5, 7));
+    const todayDay = Number(today.slice(8, 10));
+    if (day > todayDay) {
+      month -= 1;
+      if (month < 1) {
+        month = 12;
+        year -= 1;
+      }
+    }
+    push(match.index, match.index + match[0].length, calendarDate(year, month, day));
   }
 
   for (const match of work.matchAll(/(?<!\d)(\d{2})[./](\d{2})(?!\d|[./])/g)) {
@@ -317,6 +335,12 @@ const FILLERS = [
   "пожалуйста",
   "добавь",
   "добавить",
+  "добавил(?:а)?",
+  "сходил(?:а)?",
+  "смотри(?:те)?",
+  "слушай(?:те)?",
+  "короче",
+  "типа",
   "запиши",
   "записать",
   "внеси",
@@ -392,7 +416,8 @@ function previewFor(action, entity, fields, selector) {
   }
   if (entity === "workout") {
     const duration = fields.durationMin ? `${fields.durationMin} мин` : "длительность не указана";
-    return `Тренировка · ${fields.type || "без типа"} · ${duration}`;
+    const type = fields.type && fields.type !== "Тренировка" ? `${fields.type} · ` : "";
+    return `Тренировка · ${type}${duration}`;
   }
   if (entity === "book") {
     if (action === "complete") return `Отметить книгу «${fields.title || "без названия"}» прочитанной?`;
@@ -412,7 +437,10 @@ export function parseCommand(input, options = {}) {
   if (!original) return fail("Пустая команда");
 
   const folded = fold(original);
-  const entityInfo = detectEntity(folded);
+  let entityInfo = detectEntity(folded);
+  if (!entityInfo && findAmounts(folded).length && !/минут|час/.test(folded)) {
+    entityInfo = { entity: "income", incomeType: /пассивн/.test(folded) ? "passive" : "active" };
+  }
   if (!entityInfo) {
     return fail("Не разобрал команду", "Скажите сущность: доход, долг, бюджет, книга, тренировка или цель.");
   }
@@ -421,7 +449,7 @@ export function parseCommand(input, options = {}) {
   let incomeType = entityInfo.incomeType || "active";
   let action = detectAction(folded, entity);
 
-  let work = folded;
+  let work = blankPhrase(folded);
   const dateHit = extractDate(work, now);
   const spokenDate = dateHit?.date || null;
   if (dateHit) work = blankRange(work, dateHit.start, dateHit.end);
@@ -503,7 +531,7 @@ export function parseCommand(input, options = {}) {
   };
   if (action === "delete" && !selector.which && !selector.date && !selector.query) selector.which = "last";
 
-  const fieldDate = spokenDate || samaraToday(now);
+  const fieldDate = spokenDate || options.inheritedDate || samaraToday(now);
   const warnings = [];
   const fields = {};
 
@@ -567,4 +595,55 @@ export function parseCommand(input, options = {}) {
     selector,
     text: original,
   };
+}
+
+function blankPhrase(text) {
+  const patterns = [/я\s+хочу\s+чтобы\s+ты/g, /хочу\s+чтобы\s+ты/g];
+  let out = text;
+  for (const pattern of patterns) out = out.replace(pattern, (match) => " ".repeat(match.length));
+  return out;
+}
+
+export function splitClauses(input) {
+  const text = String(input ?? "").trim();
+  if (!text) return [];
+  const parts = [];
+  const re = /(?:,|;|\s+и\s+|\s+а\s+также\s+|\s+потом\s+|\s+ещ[её]\s+)/gi;
+  let match;
+  let start = 0;
+  while ((match = re.exec(text))) {
+    const separator = match[0];
+    if (separator.includes(",")) {
+      const before = text[match.index - 1] || "";
+      const after = text[match.index + separator.length] || "";
+      if (/\d/.test(before) && /\d/.test(after)) continue;
+    }
+    const chunk = text.slice(start, match.index).trim();
+    if (chunk) parts.push(chunk);
+    start = match.index + separator.length;
+  }
+  const tail = text.slice(start).trim();
+  if (tail) parts.push(tail);
+  return parts.length ? parts : [text];
+}
+
+export function parseCommands(input, options = {}) {
+  const now = options.now;
+  const parts = splitClauses(input);
+  if (parts.length <= 1) {
+    const one = parseCommand(input, options);
+    return one.ok ? { ok: true, entries: [one], warnings: one.warnings || [] } : { ...one, entries: [] };
+  }
+  const entries = [];
+  let carried = null;
+  for (const part of parts) {
+    const parsed = parseCommand(part, { ...options, now, inheritedDate: carried });
+    if (!parsed.ok) continue;
+    if (parsed.selector?.date) carried = parsed.selector.date;
+    entries.push(parsed);
+  }
+  if (!entries.length) {
+    return fail("Не разобрал команду", "Разбейте фразу на доходы, тренировки или другие записи.");
+  }
+  return { ok: true, entries, warnings: entries.flatMap((entry) => entry.warnings || []) };
 }

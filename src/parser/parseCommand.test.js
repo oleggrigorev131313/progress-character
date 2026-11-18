@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseCommand } from "./parseCommand.js";
+import { parseCommand, parseCommands } from "./parseCommand.js";
 import { addDaysISO, samaraToday } from "../shared/time.js";
 
 const NOW = new Date("2026-11-18T08:00:00Z");
@@ -153,6 +153,42 @@ test("цели и бюджет", () => {
   const december = parse("бюджет на декабрь 80 тысяч");
   assert.equal(december.fields.month, "2026-12");
   assert.equal(december.fields.amount, 80000);
+});
+
+test("40.000 руб и вводные слова не попадают в описание", () => {
+  const result = parse("Смотри, я хочу чтобы ты добавил 40.000 руб дохода за ведение Яндекс директа");
+  assert.equal(result.ok, true);
+  assert.equal(result.entity, "income");
+  assert.equal(result.fields.amount, 40000);
+  assert.equal(result.fields.type, "active");
+  assert.equal(result.fields.description, "Ведение Яндекс директа");
+  assert.doesNotMatch(result.fields.description, /смотри|хочу|добавил|руб/i);
+});
+
+test("длинная диктовка разбирается на несколько записей", () => {
+  const result = parseCommands(
+    "вчера получил 50к за маркетинг для Ивана, 20 тысяч пассивного с аренды, 15 числа 30к за Директ, и сходил на тренировку 40 минут",
+    { now: NOW },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.entries.length, 4);
+  const [first, second, third, fourth] = result.entries;
+  assert.equal(first.entity, "income");
+  assert.equal(first.fields.type, "active");
+  assert.equal(first.fields.amount, 50000);
+  assert.equal(first.fields.description, "Маркетинг для Ивана");
+  assert.equal(first.fields.date, "2026-11-17");
+  assert.equal(second.entity, "income");
+  assert.equal(second.fields.type, "passive");
+  assert.equal(second.fields.amount, 20000);
+  assert.equal(second.fields.date, "2026-11-17");
+  assert.match(second.fields.description, /аренд/i);
+  assert.equal(third.fields.amount, 30000);
+  assert.equal(third.fields.date, "2026-11-15");
+  assert.equal(third.fields.description, "Директ");
+  assert.equal(fourth.entity, "workout");
+  assert.equal(fourth.fields.durationMin, 40);
+  assert.equal(fourth.fields.date, "2026-11-15");
 });
 
 test("непонятная команда", () => {

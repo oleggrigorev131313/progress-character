@@ -46,6 +46,20 @@ export function formatDateRu(iso) {
   return `${Number(day)} ${monthName} ${iso.slice(0, 4)}`;
 }
 
+const WEEKDAYS = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
+
+export function formatWeekday(iso) {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return "";
+  const [year, month, day] = iso.split("-").map(Number);
+  const name = WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()] || "";
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+export function monthName(month) {
+  if (!month || !/^\d{4}-\d{2}$/.test(month)) return "";
+  return MONTHS_NOM[Number(month.slice(5)) - 1] || "";
+}
+
 export function formatMonthRu(month) {
   if (!month || !/^\d{4}-\d{2}$/.test(month)) return "";
   const name = MONTHS_NOM[Number(month.slice(5)) - 1] || "";

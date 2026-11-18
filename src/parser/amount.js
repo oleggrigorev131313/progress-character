@@ -76,6 +76,9 @@ function halfCompound(word) {
 }
 
 function parseDigit(word) {
+  if (/^\d{1,3}(?:[ \u00A0\u202F]\d{3})+$/.test(word)) return Number(word.replace(/[ \u00A0\u202F]/g, ""));
+  if (/^\d{1,3}(?:\.\d{3})+$/.test(word)) return Number(word.replaceAll(".", ""));
+  if (/^\d{1,3}(?:,\d{3})+$/.test(word)) return Number(word.replaceAll(",", ""));
   const normalized = word.replace(",", ".");
   if (!/^\d+(\.\d+)?$/.test(normalized)) return null;
   const value = Number(normalized);
@@ -83,7 +86,7 @@ function parseDigit(word) {
 }
 
 function tokenize(text) {
-  const re = /\d+(?:[.,]\d+)?|[a-zа-яё]+/gi;
+  const re = /\d{1,3}(?:[ \u00A0\u202F]\d{3})+|\d{1,3}(?:\.\d{3})+|\d{1,3}(?:,\d{3})+|\d+(?:[.,]\d+)?|[a-zа-яё]+/gi;
   const tokens = [];
   let match;
   while ((match = re.exec(text))) {
@@ -218,6 +221,11 @@ function parseSequence(text, tokens, start) {
   return { value, start: tokens[start].start, end: last.end, nextToken: index };
 }
 
+function extendCurrency(text, end) {
+  const match = /^(?:\s*)(₽|руб(?:л(?:ей|я|ь|и))?|р)(?=$|[^a-zа-яё0-9])/i.exec(text.slice(end));
+  return match ? end + match[0].length : end;
+}
+
 /** Find money-like amounts in text. Indexes refer to the original string when fold() keeps length. */
 export function findAmounts(input) {
   const folded = fold(String(input ?? ""));
@@ -228,8 +236,10 @@ export function findAmounts(input) {
   while (index < tokens.length) {
     const parsed = parseSequence(source, tokens, index);
     if (parsed) {
-      amounts.push({ value: parsed.value, start: parsed.start, end: parsed.end });
+      const end = extendCurrency(source, parsed.end);
+      amounts.push({ value: parsed.value, start: parsed.start, end });
       index = parsed.nextToken;
+      while (index < tokens.length && tokens[index].start < end) index += 1;
     } else {
       index += 1;
     }
