@@ -14,6 +14,12 @@ export function icon(name) {
     clock: `<circle ${stroke} cx="12" cy="12" r="8"/><path ${stroke} d="M12 8v4.5l3 2"/>`,
     gear: `<circle ${stroke} cx="12" cy="12" r="3"/><path ${stroke} d="M12 3.5v2.2M12 18.3v2.2M4.8 6.2l1.6 1.6M17.6 16.2l1.6 1.6M3.5 12h2.2M18.3 12h2.2M4.8 17.8l1.6-1.6M17.6 7.8l1.6-1.6"/>`,
     mic: `<path ${stroke} d="M12 4a2.6 2.6 0 0 1 2.6 2.6v5a2.6 2.6 0 0 1-5.2 0v-5A2.6 2.6 0 0 1 12 4Z"/><path ${stroke} d="M7 11.2a5 5 0 0 0 10 0M12 16.2V20M9 20h6"/>`,
+    book: `<path ${stroke} d="M5 5.5A2.5 2.5 0 0 1 7.5 3H19v15.5H7.5A2.5 2.5 0 0 0 5 21Z"/><path ${stroke} d="M5 5.5V21"/>`,
+    dumbbell: `<path ${stroke} d="M6 9v6M4 10v4M18 9v6M20 10v4M6 12h12"/>`,
+    target: `<circle ${stroke} cx="12" cy="12" r="7"/><circle ${stroke} cx="12" cy="12" r="3"/><path ${stroke} d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5"/>`,
+    chart: `<path ${stroke} d="M4 19h16"/><path ${stroke} d="M7 16V9M12 16V5M17 16v-4"/>`,
+    calendar: `<rect ${stroke} x="4" y="5" width="16" height="14" rx="2"/><path ${stroke} d="M8 3.5V7M16 3.5V7M4 10h16"/>`,
+    sparkle: `<path ${stroke} d="M12 3.2 13.2 8.8 18.8 10 13.2 11.2 12 16.8 10.8 11.2 5.2 10 10.8 8.8Z"/>`,
   };
   return svg(`<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name] || ""}</svg>`);
 }

@@ -1,6 +1,6 @@
 import { formatDateRu, formatMoney } from "../shared/format.js";
 import { namesMatch, textMatches } from "../shared/text.js";
-import { monthBounds, samaraMonth, samaraToday, TIMEZONE } from "../shared/time.js";
+import { monthBounds, samaraMonth, samaraToday, shiftMonth, TIMEZONE } from "../shared/time.js";
 import { levelFromXp, XP, xpForIncome, xpForWorkout } from "../shared/xp.js";
 import { assertPin } from "./auth.js";
 import { httpError, json, nowIso, readJson } from "./http.js";
@@ -276,7 +276,8 @@ async function summary(db) {
   const today = samaraToday();
   const month = samaraMonth();
   const bounds = monthBounds(month);
-  const [income, budget, debts, xp, books, goals, workouts] = await Promise.all([
+  const prevBounds = monthBounds(shiftMonth(month, -1));
+  const [income, incomePrev, budget, debts, xp, books, goals, workouts, workoutsPrev] = await Promise.all([
     db
       .prepare(
         `SELECT COALESCE(SUM(amount), 0) AS total,
@@ -284,6 +285,14 @@ async function summary(db) {
          FROM income WHERE occurred_on >= ? AND occurred_on < ?`,
       )
       .bind(bounds.start, bounds.end)
+      .first(),
+    db
+      .prepare(
+        `SELECT COALESCE(SUM(amount), 0) AS total,
+                COALESCE(SUM(CASE WHEN type = 'passive' THEN amount ELSE 0 END), 0) AS passive
+         FROM income WHERE occurred_on >= ? AND occurred_on < ?`,
+      )
+      .bind(prevBounds.start, prevBounds.end)
       .first(),
     db.prepare("SELECT amount FROM budgets WHERE month = ?").bind(month).first(),
     db
@@ -303,6 +312,13 @@ async function summary(db) {
       )
       .bind(bounds.start, bounds.end)
       .first(),
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n, COALESCE(SUM(duration_min), 0) AS minutes
+         FROM workouts WHERE occurred_on >= ? AND occurred_on < ?`,
+      )
+      .bind(prevBounds.start, prevBounds.end)
+      .first(),
   ]);
 
   const bookCounts = { planned: 0, reading: 0, finished: 0, paused: 0 };
@@ -318,6 +334,8 @@ async function summary(db) {
     finance: {
       incomeMonth: num(income?.total),
       passiveMonth: num(income?.passive),
+      incomePrev: num(incomePrev?.total),
+      passivePrev: num(incomePrev?.passive),
       budget: budget ? num(budget.amount) : 0,
       budgetSet: Boolean(budget),
       debtOwe: num(debts?.owe),
@@ -327,8 +345,10 @@ async function summary(db) {
       booksReading: bookCounts.reading,
       booksFinished: bookCounts.finished,
       booksPlanned: bookCounts.planned,
+      booksPaused: bookCounts.paused,
       workoutsMonth: num(workouts?.n),
       workoutMinutesMonth: num(workouts?.minutes),
+      workoutsPrev: num(workoutsPrev?.n),
       goalsActive: goalCounts.active,
       goalsCompleted: goalCounts.completed,
     },

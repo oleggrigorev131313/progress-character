@@ -4,6 +4,7 @@ export function fold(input) {
   for (let i = 0; i < input.length; i++) {
     const ch = input[i];
     if (ch === "ё" || ch === "Ё") out += "е";
+    else if (ch === "\u00A0" || ch === "\u202F") out += " ";
     else out += ch.toLowerCase();
   }
   return out;

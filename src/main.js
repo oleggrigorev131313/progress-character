@@ -1,5 +1,6 @@
 import "./styles.css";
 import { getPin, setPin } from "./api.js";
+import { renderAnalytics } from "./ui/analytics.js";
 import { renderFinance } from "./ui/finance.js";
 import { renderGrowth } from "./ui/growth.js";
 import { renderHistory } from "./ui/history.js";
@@ -14,22 +15,27 @@ const routes = {
   "/finance": renderFinance,
   "/growth": renderGrowth,
   "/history": renderHistory,
+  "/analytics": renderAnalytics,
   "/settings": renderSettings,
 };
 
 const titles = {
-  "/": "Главная",
+  "/": "Обзор",
   "/finance": "Финансы",
   "/growth": "Саморазвитие",
-  "/history": "История",
+  "/history": "Прогресс",
+  "/analytics": "Аналитика",
   "/settings": "Настройки",
 };
 
 const nav = [
-  ["/", "Главная", "home"],
+  ["/", "Обзор", "home"],
+  ["/history", "Прогресс", "chart"],
   ["/finance", "Финансы", "wallet"],
-  ["/growth", "Саморазвитие", "spark"],
-  ["/history", "История", "clock"],
+  ["/growth?tab=goals", "Цели", "target"],
+  ["/growth?tab=books", "Книги", "book"],
+  ["/growth?tab=workouts", "Тренировки", "dumbbell"],
+  ["/analytics", "Аналитика", "chart"],
   ["/settings", "Настройки", "gear"],
 ];
 
@@ -42,26 +48,39 @@ const links = nav.map(([href, label, name]) => {
 const sidebar = el(
   "aside",
   { class: "sidebar" },
-  el("div", { class: "brand" }, el("p", { class: "brand-mark", text: "Прокачка" }), el("p", { class: "brand-sub", text: "персонажа" })),
+  el(
+    "div",
+    { class: "brand" },
+    el("span", { class: "logo-mark", "aria-hidden": "true" }),
+    el("p", { class: "brand-mark", text: "Прокачка" }),
+  ),
   el("nav", { class: "nav", "aria-label": "Разделы" }, links),
+  el(
+    "div",
+    { class: "user-card" },
+    el("span", { class: "avatar", text: "О" }),
+    el("span", {}, el("span", { class: "user-name", text: "Олег" }), el("span", { class: "user-meta", text: "Ульяновск" })),
+  ),
 );
 const menu = el("button", { class: "menu", type: "button", "aria-label": "Меню" }, icon("home"));
 menu.replaceChildren(svgMenu());
 const topbar = el("header", { class: "topbar" }, menu, el("p", { class: "topbar-title", text: "Прокачка" }));
 const outlet = el("div", { id: "outlet" });
-const voice = el("div", { class: "voice-dock" }, el("div", { class: "voice-inner" }));
+const voice = el("section", { class: "voice-card", "aria-label": "Голосовой ввод" });
 const column = el("div", { class: "column" }, topbar, outlet, voice);
+app.className = "shell";
 app.append(backdrop, sidebar, column);
-mountVoice(voice.querySelector(".voice-inner"));
+mountVoice(voice);
 
 let renderToken = 0;
 
 async function render() {
   const token = ++renderToken;
   const path = location.pathname;
+  const here = path === "/growth" && !location.search ? "/growth?tab=books" : `${path}${location.search}`;
   closeNav();
   for (const link of links) {
-    const active = link.dataset.nav === path;
+    const active = link.dataset.nav === here || (link.dataset.nav === path && !path.startsWith("/growth"));
     link.classList.toggle("is-on", active);
     if (active) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
@@ -140,5 +159,12 @@ function svgMenu() {
   template.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M5 8h14M5 12h14M5 16h14"/></svg>`;
   return template.content.firstElementChild;
 }
+
+document.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    document.querySelector("#voice-input")?.focus();
+  }
+});
 
 render();

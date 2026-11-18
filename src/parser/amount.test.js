@@ -51,3 +51,18 @@ test("две отдельные суммы", () => {
 test("в обычных словах суммы нет", () => {
   assert.deepEqual(findAmounts("маркетинг для Ивана"), []);
 });
+
+test("разделители тысяч и десятичные", () => {
+  assert.equal(amount("40.000"), 40000);
+  assert.equal(amount("40.000 руб"), 40000);
+  assert.equal(amount("40,000"), 40000);
+  assert.equal(amount("1.500.000"), 1500000);
+  assert.equal(amount("1,500,000"), 1500000);
+  assert.equal(amount("40\u00A0000"), 40000);
+  assert.equal(amount("40\u202F000 рублей"), 40000);
+  assert.equal(amount("1,5 млн"), 1500000);
+  assert.equal(amount("1.5 млн"), 1500000);
+  const found = findAmounts("добавил 40.000 руб дохода");
+  assert.equal(found[0].value, 40000);
+  assert.match("добавил 40.000 руб дохода".slice(found[0].start, found[0].end), /40\.000\s*руб/);
+});

@@ -7,7 +7,7 @@ export async function renderHistory() {
   try {
     const data = await api.get("/api/xp?limit=80");
     page.append(
-      el("p", { class: "eyebrow", text: "История" }),
+      el("p", { class: "eyebrow", text: "Прогресс" }),
       el("h1", { text: "Откуда опыт" }),
       el("p", { class: "lede", text: "Здесь только начисления по текущим записям. Если удалить доход, книгу или тренировку, опыт за них снимается." }),
       data.items.length

@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { parseCommand } from "../parser/parseCommand.js";
+import { parseCommands } from "../parser/parseCommand.js";
 import { samaraMonth, samaraToday } from "../shared/time.js";
 import { dateInput, el, errorLine, field, numInput, selectInput, showError, textInput, xpNote } from "./dom.js";
 import { icon } from "./icons.js";
@@ -20,18 +20,24 @@ export function mountVoice(dock) {
     id: "voice-input",
     class: "voice-input",
     type: "text",
-    placeholder: "Получил 50к за проект или тренировка бег 40 минут",
+    placeholder: "Нажми и говори…",
     autocomplete: "off",
     "aria-label": "Команда",
   });
   const mic = el("button", { class: "mic", type: "button", "aria-label": "Голосовой ввод", "aria-pressed": "false" });
   mic.append(icon("mic"));
   const bar = el("div", { class: "voice-bar" }, input, mic);
-  dock.append(preview, bar);
+  const row = el(
+    "div",
+    { class: "voice-row" },
+    el("div", { class: "voice-copy" }, el("h2", { text: "Скажи, что добавить" }), el("p", { text: "Или нажми ⌘ + K" })),
+    bar,
+  );
+  dock.append(preview, row);
 
   let recognition = null;
   let listening = false;
-  let heard = "";
+  let committed = "";
 
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -52,36 +58,71 @@ export function mountVoice(dock) {
       recognition = new Ctor();
       recognition.lang = "ru-RU";
       recognition.interimResults = true;
-      recognition.continuous = false;
+      recognition.continuous = true;
       recognition.maxAlternatives = 1;
       recognition.onresult = (event) => {
-        heard = "";
-        for (let i = 0; i < event.results.length; i++) heard += event.results[i][0].transcript;
-        input.value = heard;
+        let sessionFinal = "";
+        let interim = "";
+        for (let i = 0; i < event.results.length; i++) {
+          const piece = event.results[i][0].transcript;
+          if (event.results[i].isFinal) sessionFinal += `${piece} `;
+          else interim += piece;
+        }
+        input.value = `${committed}${sessionFinal}${interim}`.replace(/\s+/g, " ").trim();
       };
-      recognition.onerror = () => {
-        listening = false;
-        paintMic();
+      recognition.onerror = (event) => {
+        if (event.error === "not-allowed") {
+          listening = false;
+          paintMic();
+          showNote("Нет доступа к микрофону. Напишите команду текстом.");
+        }
       };
       recognition.onend = () => {
-        listening = false;
+        if (input.value.trim()) committed = `${input.value.trim()} `;
+        if (listening) {
+          window.setTimeout(() => {
+            if (!listening) return;
+            try {
+              recognition.start();
+            } catch {
+              /* браузер ещё не отпустил микрофон */
+            }
+          }, 150);
+          return;
+        }
         paintMic();
-        if (heard.trim()) openPreview(heard.trim());
+        const text = input.value.trim();
+        if (text) openPreview(text);
       };
     }
     if (listening) {
-      recognition.stop();
+      listening = false;
+      paintMic();
+      try {
+        recognition.stop();
+      } catch {
+        if (input.value.trim()) openPreview(input.value.trim());
+      }
       return;
     }
-    heard = "";
+    committed = "";
+    input.value = "";
     listening = true;
     paintMic();
-    recognition.start();
+    try {
+      recognition.start();
+    } catch {
+      listening = false;
+      paintMic();
+      showNote("Не удалось включить микрофон. Напишите команду текстом.");
+    }
   });
 
   function paintMic() {
     mic.classList.toggle("is-live", listening);
     mic.setAttribute("aria-pressed", listening ? "true" : "false");
+    mic.setAttribute("aria-label", listening ? "Остановить запись" : "Голосовой ввод");
+    dock.classList.toggle("is-listening", listening);
   }
 
   function closePreview() {
@@ -95,17 +136,26 @@ export function mountVoice(dock) {
   }
 
   async function openPreview(text) {
-    const parsed = parseCommand(text, { now: new Date() });
+    const batch = parseCommands(text, { now: new Date() });
     preview.hidden = false;
     preview.replaceChildren();
-    if (!parsed.ok) {
-      preview.append(
-        el("p", { class: "preview-title", text: parsed.error }),
-        parsed.hint ? el("p", { class: "muted", text: parsed.hint }) : null,
-        el("button", { class: "btn ghost", type: "button", onClick: closePreview }, "Закрыть"),
-      );
+    preview.scrollIntoView({ block: "center" });
+    if (!batch.ok) {
+      preview.append(el("p", { class: "preview-title", text: batch.error || "Не разобрал команду" }));
+      if (batch.hint) preview.append(el("p", { class: "muted", text: batch.hint }));
+      preview.append(el("button", { class: "btn ghost", type: "button", onClick: closePreview }, "Закрыть"));
       return;
     }
+    const entries = batch.entries.filter((entry) => entry.ok);
+    if (entries.length > 1 && entries.every((entry) => entry.action === "create")) {
+      preview.append(buildReview(entries, () => {
+        input.value = "";
+        committed = "";
+        closePreview();
+      }, closePreview));
+      return;
+    }
+    const parsed = entries[0];
     preview.append(el("p", { class: "preview-kicker", text: "Проверьте запись" }), el("p", { class: "preview-title", text: parsed.preview }));
     for (const warning of parsed.warnings) preview.append(el("p", { class: "warn", text: warning }));
 
@@ -207,7 +257,61 @@ export function mountVoice(dock) {
   }
 }
 
-function buildCreateForm(parsed, onSaved, onCancel) {
+function buildReview(entries, onSaved, onCancel) {
+  const cards = entries.map((entry) => ({ entry, form: buildCreateForm(entry, null, null, true), removed: false }));
+  const list = el("div", { class: "review-list" });
+  for (const card of cards) {
+    const remove = el("button", { class: "text-btn danger", type: "button" }, "Убрать");
+    const article = el(
+      "article",
+      { class: "review-card" },
+      el("p", { class: "preview-title", text: card.entry.preview }),
+      card.form.node,
+      remove,
+    );
+    remove.addEventListener("click", () => {
+      card.removed = true;
+      article.remove();
+      if (cards.every((item) => item.removed)) onCancel();
+    });
+    list.append(article);
+  }
+  const error = errorLine();
+  const save = el("button", { id: "voice-save", class: "btn", type: "button" }, "Сохранить все");
+  save.addEventListener("click", async () => {
+    const alive = cards.filter((card) => !card.removed);
+    if (!alive.length) return;
+    save.disabled = true;
+    showError(error, "");
+    try {
+      let gained = 0;
+      for (const card of alive) {
+        const payload = card.form.read();
+        const result = card.entry.entity === "budget"
+          ? await api.put("/api/budget", payload)
+          : await api.post(PATHS[card.entry.entity], payload);
+        gained += result.xpGained || 0;
+      }
+      xpNote(alive.length > 1 ? "Записи сохранены" : "Записано", gained);
+      onSaved();
+      document.dispatchEvent(new CustomEvent("data-changed"));
+    } catch (errorValue) {
+      showError(error, errorValue.message);
+      save.disabled = false;
+    }
+  });
+  return el(
+    "div",
+    {},
+    el("p", { class: "preview-kicker", text: "Проверьте записи" }),
+    el("p", { class: "muted", text: `${entries.length} записей. Лишнее можно убрать до сохранения.` }),
+    list,
+    error,
+    el("div", { class: "row-actions" }, save, el("button", { class: "btn ghost", type: "button", onClick: onCancel }, "Отмена")),
+  );
+}
+
+function buildCreateForm(parsed, onSaved, onCancel, bare = false) {
   const fields = parsed.fields || {};
   const error = errorLine();
   const controls = [];
@@ -261,6 +365,7 @@ function buildCreateForm(parsed, onSaved, onCancel) {
     );
   }
 
+  if (bare) return { node: el("div", { class: "preview-form" }, controls), read: () => readPayload(parsed.entity, bag) };
   const save = el("button", { id: "voice-save", class: "btn", type: "submit" }, "Сохранить");
   const form = el("form", { class: "preview-form" }, controls, error, el("div", { class: "row-actions" }, save, el("button", { class: "btn ghost", type: "button", onClick: () => onCancel() }, "Отмена")));
   form.addEventListener("submit", async (event) => {

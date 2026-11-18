@@ -30,6 +30,13 @@ export function samaraToday(date = new Date()) {
   return formatISODate(samaraParts(date));
 }
 
+export function greetingFor(date = new Date()) {
+  const hour = samaraParts(date).hour;
+  if (hour >= 5 && hour < 12) return "Доброе утро";
+  if (hour >= 12 && hour < 18) return "Добрый день";
+  return "Добрый вечер";
+}
+
 export function samaraMonth(date = new Date()) {
   const parts = samaraParts(date);
   return `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}`;
