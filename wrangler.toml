@@ -1,0 +1,25 @@
+name = "progress-character"
+main = "src/worker.js"
+compatibility_date = "2026-11-18"
+workers_dev = true
+
+# /api/* обрабатывает Worker. Остальные запросы он отдаёт через binding ASSETS.
+# run_worker_first = true нужен, чтобы SPA-fallback не перехватывал API.
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
+[observability]
+enabled = true
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
+
+[[d1_databases]]
+binding = "DB"
+database_name = "progress-character-db"
+database_id = "7ba2a247-cd24-4b94-bc9f-e0f3538bbc92"
+migrations_dir = "migrations"
